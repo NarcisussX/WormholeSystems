@@ -3,6 +3,18 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        VITE_REVERB_APP_KEY: ${REVERB_APP_KEY:-laravel}
+        VITE_REVERB_HOST: www.triffnix.com
+        VITE_REVERB_PORT: "443"
+        VITE_REVERB_SCHEME: https
+        VITE_REVERB_PATH: /reverb
+
+        VITE_PUSHER_APP_KEY: ${REVERB_APP_KEY:-laravel}
+        VITE_PUSHER_HOST: www.triffnix.com
+        VITE_PUSHER_PORT: "443"
+        VITE_PUSHER_SCHEME: https
+        VITE_PUSHER_APP_CLUSTER: mt1
     image: wormholesystems/app:local
     env_file: .env.docker
     depends_on:

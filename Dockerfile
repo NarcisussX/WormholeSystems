@@ -48,16 +48,43 @@ RUN npm ci --no-audit --no-fund
 
 # Bring in sources generated in vendor stage
 COPY --from=vendor /app/resources /app/resources
-# ⬇️ Add this so imports like "../../../public/img/..." resolve
+# so imports like "../../../public/img/..." resolve
 COPY --from=vendor /app/public /app/public
 
 # Vite/TS configs
 COPY vite.config.ts tsconfig.json ./
 
-# (from earlier) prevent Wayfinder plugin from invoking PHP in this stage
+# prevent Wayfinder plugin from invoking PHP in this stage
 ENV WAYFINDER_COMMAND=true
 
+# --- VITE env that the browser bundle needs (Echo/Pusher/Reverb) ---
+ARG VITE_REVERB_APP_KEY
+ARG VITE_REVERB_HOST
+ARG VITE_REVERB_PORT
+ARG VITE_REVERB_SCHEME
+ARG VITE_REVERB_PATH
+ARG VITE_PUSHER_APP_KEY
+ARG VITE_PUSHER_HOST
+ARG VITE_PUSHER_PORT
+ARG VITE_PUSHER_SCHEME
+ARG VITE_PUSHER_APP_CLUSTER
+
+# Write a .env file that Vite reads at build time
+RUN printf '%s\n' \
+  "VITE_REVERB_APP_KEY=${VITE_REVERB_APP_KEY}" \
+  "VITE_REVERB_HOST=${VITE_REVERB_HOST}" \
+  "VITE_REVERB_PORT=${VITE_REVERB_PORT}" \
+  "VITE_REVERB_SCHEME=${VITE_REVERB_SCHEME}" \
+  "VITE_REVERB_PATH=${VITE_REVERB_PATH}" \
+  "VITE_PUSHER_APP_KEY=${VITE_PUSHER_APP_KEY}" \
+  "VITE_PUSHER_HOST=${VITE_PUSHER_HOST}" \
+  "VITE_PUSHER_PORT=${VITE_PUSHER_PORT}" \
+  "VITE_PUSHER_SCHEME=${VITE_PUSHER_SCHEME}" \
+  "VITE_PUSHER_APP_CLUSTER=${VITE_PUSHER_APP_CLUSTER}" \
+  > .env
+
 RUN npm run build
+
 
 
 # -------- 3) Final PHP-FPM runtime --------
