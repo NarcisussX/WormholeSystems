@@ -1,34 +1,38 @@
 #!/usr/bin/env bash
 set -euo pipefail
+APP_DIR="/srv/app"             # code baked into the image
+WEBROOT="/var/www/html"        # shared volume for nginx + app
 
-cd /srv/app
+# 1) Populate shared webroot once (copy full app, including public/build)
+if [ ! -e "$WEBROOT/.initialized" ]; then
+  echo "[entrypoint] Populating webroot volume from image..."
+  mkdir -p "$WEBROOT"
+  rsync -a --delete "$APP_DIR/" "$WEBROOT/" || cp -a "$APP_DIR/." "$WEBROOT/"
+  touch "$WEBROOT/.initialized"
+fi
 
-# Ensure required dirs exist and are writable
+cd "$WEBROOT"
+
+# 2) Ensure writable dirs
 mkdir -p storage/framework/{cache,sessions,views} storage/logs bootstrap/cache
-
-# Own by www-data so all services (app/worker/scheduler/reverb) can use them
 chown -R www-data:www-data storage bootstrap/cache
 chmod -R ug+rwX storage bootstrap/cache || true
 
-# Create .env on first run (safe if it already exists)
+# 3) .env + key
 [ -f .env ] || cp .env.example .env || true
 
-# Run artisan setup as www-data (DB will be ready thanks to compose healthcheck)
-if command -v gosu >/dev/null 2>&1; then
-  as_www="gosu www-data"
-else
-  as_www="su -s /bin/sh -c"
-fi
+run_as_www() {
+  if command -v gosu >/dev/null 2>&1; then gosu www-data "$@"; else su -s /bin/sh -c "$*"; fi
+}
 
-$as_www "php artisan key:generate --force --no-interaction" || true
-$as_www "php artisan storage:link" || true
-$as_www "php artisan config:cache" || true
-$as_www "php artisan route:cache" || true
-$as_www "php artisan view:cache" || true
-$as_www "php artisan migrate --force" || true
+run_as_www php artisan key:generate --force --no-interaction || true
+run_as_www php artisan storage:link || true
+run_as_www php artisan config:cache || true
+run_as_www php artisan route:cache || true
+run_as_www php artisan view:cache || true
+run_as_www php artisan migrate --force || true
 
-# If we're starting php-fpm, keep its default behavior (master root, workers www-data).
-# For any other command (queue, schedule, reverb), drop to www-data.
+# 4) If we're launching php-fpm, keep it as default; else drop to www-data
 if [ "${1:-}" = "php-fpm" ]; then
   exec "$@"
 else

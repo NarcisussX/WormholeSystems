@@ -11,6 +11,7 @@ services:
       redis:
         condition: service_started
     volumes:
+      - webroot:/var/www/html  
       - app_storage:/srv/app/storage
       - app_cache:/srv/app/bootstrap/cache
     restart: unless-stopped
@@ -64,6 +65,7 @@ services:
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - app_public:/srv/app/public:ro
+      - webroot:/var/www/html:ro
     restart: unless-stopped
 
   db:
@@ -83,28 +85,13 @@ services:
       start_period: 30s
     restart: unless-stopped
 
-  public-sync:
-    image: wormholesystems/app:local
-    entrypoint: ["/bin/sh", "-lc"]    
-    command: >
-      set -e;
-      mkdir -p /out;
-      rm -rf /out/*;
-      cp -a /srv/app/public/. /out/;
-      echo "public-sync: copied /srv/app/public -> /out"
-    volumes:
-      - app_public:/out
-    depends_on:
-      app:
-        condition: service_started
-    restart: "no"
-
   redis:
     image: redis:7-alpine
     networks: [net]
 
 volumes:
   db_data:
+  webroot:
   app_storage:
   app_cache:
   app_public:
