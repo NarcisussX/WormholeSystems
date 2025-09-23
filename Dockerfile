@@ -1,38 +1,60 @@
-# ---------- Composer/vendor stage (with PHP extensions available) ----------
+# -------- 1) Composer/vendor stage (PHP 8.4 CLI with needed extensions) --------
 FROM php:8.4-cli AS vendor
 WORKDIR /app
 
-# System deps required for common PHP extensions
+# System deps
 RUN apt-get update && apt-get install -y \
-    git unzip libzip-dev libicu-dev libxml2-dev \
+    git unzip libzip-dev libicu-dev libpng-dev libonig-dev libxml2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# PHP extensions required by the project/platform checks
-# (pcntl is the critical one from your error; sockets/intl/zip/bcmath/pdo_mysql are commonly required)
+# PHP extensions (pcntl is required by the app; others are common Laravel reqs)
 RUN docker-php-ext-install pcntl sockets intl zip bcmath pdo_mysql
 
-# pecl redis is often required by Laravel stacks
-RUN pecl install redis \
-    && docker-php-ext-enable redis
+# Optional but common for Laravel
+RUN pecl install redis && docker-php-ext-enable redis
 
-# Bring in composer from the official image
+# Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
-# Install PHP deps
+# Copy only composer files first for better caching, then install deps
 COPY composer.json composer.lock ./
 RUN composer install --no-dev --prefer-dist --no-progress --no-interaction
 
-# ---------- Node / Vite build ----------
+# Copy the rest of the source so we can run artisan generators
+COPY . /app
+
+# Minimal env so artisan can bootstrap without touching a real DB
+# (Wayfinder only scans routes/controllers)
+ENV APP_ENV=production \
+    APP_KEY=base64:WfH0leTempKeyDontUseInProd++++++++++++++= \
+    DB_CONNECTION=sqlite \
+    DB_DATABASE=/tmp/_build.sqlite \
+    CACHE_STORE=file \
+    QUEUE_CONNECTION=sync
+
+# Create placeholder .env if missing, then generate Wayfinder TS before Vite build
+RUN php -r "file_exists('.env') || copy('.env.example', '.env');" \
+ && php artisan key:generate --ansi || true \
+ && php artisan wayfinder:generate --ansi
+
+# -------- 2) Node/Vite build stage --------
 FROM node:22-alpine AS node_builder
 WORKDIR /app
+
+# Copy package manifests and install
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
-COPY resources ./resources
+
+# Bring in resources (including the Wayfinder-generated TS from vendor stage)
+COPY --from=vendor /app/resources /app/resources
+# Vite/TS configs
 COPY vite.config.ts tsconfig.json ./
+
+# Build frontend assets
 RUN npm run build
 
-# ---------- Final PHP-FPM runtime ----------
+# -------- 3) Final PHP-FPM runtime image --------
 FROM php:8.4-fpm AS app
 WORKDIR /srv/app
 
@@ -41,23 +63,19 @@ RUN apt-get update && apt-get install -y \
     git unzip libzip-dev libpng-dev libonig-dev libicu-dev libxml2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Runtime PHP extensions (match what we had in vendor to avoid surprises)
+# PHP runtime extensions (match vendor stage)
 RUN docker-php-ext-install pcntl sockets pdo_mysql bcmath intl opcache zip \
-    && pecl install redis \
-    && docker-php-ext-enable redis
+ && pecl install redis \
+ && docker-php-ext-enable redis
 
-# App source
+# Copy full source
 COPY . /srv/app
 
-# Vendor + built assets
+# Copy vendor and built assets from previous stages
 COPY --from=vendor /app/vendor /srv/app/vendor
 COPY --from=node_builder /app/public/build /srv/app/public/build
 
-# Shared volume target (for nginx, worker, scheduler, etc.)
-RUN mkdir -p /var/www/html
-ENV APP_COPY_TARGET=/var/www/html
-
-# PHP runtime tweaks
+# PHP config
 RUN { \
   echo "memory_limit=512M"; \
   echo "upload_max_filesize=20M"; \
@@ -65,10 +83,9 @@ RUN { \
   echo "max_execution_time=120"; \
   echo "opcache.enable=1"; \
   echo "opcache.enable_cli=1"; \
-  echo "opcache.preload_user=www-data"; \
 } > /usr/local/etc/php/conf.d/99-custom.ini
 
-# Entrypoint does first-run copy, key gen, storage link, migrate
+# Entrypoint (migrate, storage:link, cache warmups)
 COPY docker/app/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

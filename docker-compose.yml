@@ -1,125 +1,79 @@
 version: "3.9"
-
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    image: wormholesystems-app:latest
-    env_file: .env
+    image: wormholesystems/app:local
+    env_file: .env.docker
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_started
+      - db
+      - redis
     volumes:
-      - appdata:/var/www/html
-      - storagedata:/var/www/html/storage
-    networks:
-      - appnet
+      - app_storage:/srv/app/storage
+      - app_cache:/srv/app/bootstrap/cache
+    networks: [net]
+
+  worker:
+    image: wormholesystems/app:local
+    env_file: .env.docker
+    command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
+    depends_on: [app, db, redis]
+    volumes:
+      - app_storage:/srv/app/storage
+      - app_cache:/srv/app/bootstrap/cache
+    networks: [net]
+
+  scheduler:
+    image: wormholesystems/app:local
+    env_file: .env.docker
+    command: php artisan schedule:work
+    depends_on: [app, db, redis]
+    volumes:
+      - app_storage:/srv/app/storage
+      - app_cache:/srv/app/bootstrap/cache
+    networks: [net]
+
+  # Laravel Reverb (WebSocket server)
+  reverb:
+    image: wormholesystems/app:local
+    env_file: .env.docker
+    command: php artisan reverb:start --port=8080 --host=0.0.0.0
+    depends_on: [app]
+    networks: [net]
 
   nginx:
     image: nginx:1.27-alpine
-    depends_on:
-      - app
+    depends_on: [app, reverb]
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - app_public:/srv/app/public:ro
     ports:
-      - "8088:80"  # change or remove if using Traefik
-    volumes:
-      - appdata:/var/www/html:ro
-      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-    networks:
-      - appnet
-    # --- Optional Traefik (uncomment & adjust) ---
-    # labels:
-    #   - "traefik.enable=true"
-    #   - "traefik.http.routers.wormholes.rule=Host(`www.triffnix.com`)"
-    #   - "traefik.http.routers.wormholes.entrypoints=websecure"
-    #   - "traefik.http.routers.wormholes.tls=true"
-    #   - "traefik.http.services.wormholes.loadbalancer.server.port=80"
-    # networks:
-    #   - appnet
-    #   - app_web   # your Traefik network name
-
-  reverb:
-    image: wormholesystems-app:latest
-    env_file: .env
-    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
-    depends_on:
-      - app
-      - redis
-    expose:
-      - "8080"
-    networks:
-      - appnet
-    # --- Optional Traefik (WSS on a subdomain) ---
-    # labels:
-    #   - "traefik.enable=true"
-    #   - "traefik.http.routers.wormholes-ws.rule=Host(`ws.triffnix.com`)"
-    #   - "traefik.http.routers.wormholes-ws.entrypoints=websecure"
-    #   - "traefik.http.routers.wormholes-ws.tls=true"
-    #   - "traefik.http.services.wormholes-ws.loadbalancer.server.port=8080"
-    # networks:
-    #   - appnet
-    #   - app_web
-
-  worker:
-    image: wormholesystems-app:latest
-    env_file: .env
-    command: ["php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--max-time=3600"]
-    depends_on:
-      - app
-      - db
-      - redis
-    volumes:
-      - appdata:/var/www/html
-      - storagedata:/var/www/html/storage
-    networks:
-      - appnet
-
-  scheduler:
-    image: wormholesystems-app:latest
-    env_file: .env
-    command: ["php", "artisan", "schedule:work"]
-    depends_on:
-      - app
-      - db
-      - redis
-    volumes:
-      - appdata:/var/www/html
-      - storagedata:/var/www/html/storage
-    networks:
-      - appnet
+      - "80:80"
+      # if terminating TLS on this box:
+      # - "443:443"
+    networks: [net]
 
   db:
-    image: mariadb:10.11
+    image: mariadb:11
     environment:
       MYSQL_DATABASE: wormholesystems
       MYSQL_USER: wormhole
       MYSQL_PASSWORD: wormhole
-      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_ROOT_PASSWORD: root
     volumes:
-      - dbdata:/var/lib/mysql
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uwormhole -pwormhole || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 20
-    networks:
-      - appnet
+      - db_data:/var/lib/mysql
+    networks: [net]
 
   redis:
     image: redis:7-alpine
-    volumes:
-      - redisdata:/data
-    networks:
-      - appnet
-
-networks:
-  appnet: {}
-  # app_web: {} # uncomment if binding to your existing Traefik network
+    networks: [net]
 
 volumes:
-  appdata:
-  storagedata:
-  dbdata:
-  redisdata:
+  db_data:
+  app_storage:
+  app_cache:
+  app_public:
+
+networks:
+  net:

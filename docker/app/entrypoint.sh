@@ -1,44 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DIR="/srv/app"
-TARGET_DIR="${APP_COPY_TARGET:-/var/www/html}"
+cd /srv/app
 
-copy_if_empty() {
-  if [ ! -f "$TARGET_DIR/.initialized" ]; then
-    echo "[entrypoint] First run: populating app volume..."
-    # Use rsync if available, else cp -a
-    if command -v rsync >/dev/null 2>&1; then
-      rsync -a --delete "$APP_DIR/" "$TARGET_DIR/"
-    else
-      cp -a "$APP_DIR/." "$TARGET_DIR/"
-    fi
-    touch "$TARGET_DIR/.initialized"
-  fi
-}
+# Ensure storage is writable (volume may come in with root perms)
+mkdir -p storage/framework/{cache,sessions,views} storage/logs bootstrap/cache
+chmod -R 775 storage bootstrap/cache || true
 
-artisan() {
-  php "$TARGET_DIR/artisan" "$@"
-}
+# Copy example env on first run if no .env present
+if [ ! -f .env ]; then
+  cp .env.example .env || true
+fi
 
-main() {
-  copy_if_empty
+# Ensure APP_KEY exists
+php artisan key:generate --force --no-interaction || true
 
-  # Storage link (idempotent)
-  artisan storage:link || true
+# Cache config/routes/views for perf
+php artisan config:cache || true
+php artisan route:cache || true
+php artisan view:cache || true
 
-  # Generate APP_KEY if missing
-  if ! grep -q '^APP_KEY=base64:' "$TARGET_DIR/.env" 2>/dev/null; then
-    echo "[entrypoint] Generating APP_KEY..."
-    artisan key:generate --force || true
-  fi
+# Run database migrations (safe to run repeatedly)
+php artisan migrate --force || true
 
-  # Ensure database is migrated
-  echo "[entrypoint] Running migrations (safe to re-run)..."
-  artisan migrate --force || true
+# Ensure storage link
+php artisan storage:link || true
 
-  echo "[entrypoint] Ready. Exec: $*"
-  exec "$@"
-}
-
-main "$@"
+exec "$@"
