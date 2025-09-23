@@ -1,6 +1,25 @@
-# ---------- Composer deps ----------
-FROM composer:2 AS vendor
+# ---------- Composer/vendor stage (with PHP extensions available) ----------
+FROM php:8.4-cli AS vendor
 WORKDIR /app
+
+# System deps required for common PHP extensions
+RUN apt-get update && apt-get install -y \
+    git unzip libzip-dev libicu-dev libxml2-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# PHP extensions required by the project/platform checks
+# (pcntl is the critical one from your error; sockets/intl/zip/bcmath/pdo_mysql are commonly required)
+RUN docker-php-ext-install pcntl sockets intl zip bcmath pdo_mysql
+
+# pecl redis is often required by Laravel stacks
+RUN pecl install redis \
+    && docker-php-ext-enable redis
+
+# Bring in composer from the official image
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+ENV COMPOSER_ALLOW_SUPERUSER=1
+
+# Install PHP deps
 COPY composer.json composer.lock ./
 RUN composer install --no-dev --prefer-dist --no-progress --no-interaction
 
@@ -9,10 +28,8 @@ FROM node:22-alpine AS node_builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
-# Copy only what Vite needs to build
 COPY resources ./resources
 COPY vite.config.ts tsconfig.json ./
-# Vite will emit to /app/public/build by default
 RUN npm run build
 
 # ---------- Final PHP-FPM runtime ----------
@@ -22,25 +39,25 @@ WORKDIR /srv/app
 # System deps
 RUN apt-get update && apt-get install -y \
     git unzip libzip-dev libpng-dev libonig-dev libicu-dev libxml2-dev \
-    && docker-php-ext-install pdo_mysql bcmath intl opcache zip \
-    && pecl install redis \
-    && docker-php-ext-enable redis \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy source code
+# Runtime PHP extensions (match what we had in vendor to avoid surprises)
+RUN docker-php-ext-install pcntl sockets pdo_mysql bcmath intl opcache zip \
+    && pecl install redis \
+    && docker-php-ext-enable redis
+
+# App source
 COPY . /srv/app
 
-# Bring in vendor and built assets
+# Vendor + built assets
 COPY --from=vendor /app/vendor /srv/app/vendor
 COPY --from=node_builder /app/public/build /srv/app/public/build
 
-# A persistent, shared volume where the running containers will keep the app
-# code (so nginx and artisan share the same files).
-# We copy into the volume on container start (see entrypoint).
+# Shared volume target (for nginx, worker, scheduler, etc.)
 RUN mkdir -p /var/www/html
 ENV APP_COPY_TARGET=/var/www/html
 
-# PHP config (prod-ish defaults)
+# PHP runtime tweaks
 RUN { \
   echo "memory_limit=512M"; \
   echo "upload_max_filesize=20M"; \
@@ -51,8 +68,7 @@ RUN { \
   echo "opcache.preload_user=www-data"; \
 } > /usr/local/etc/php/conf.d/99-custom.ini
 
-# Entrypoint copies code to the shared volume if empty, runs first-time setup,
-# then execs whatever command the service wants.
+# Entrypoint does first-run copy, key gen, storage link, migrate
 COPY docker/app/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
