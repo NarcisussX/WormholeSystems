@@ -76,6 +76,7 @@ services:
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - app_public:/var/www/html/public:ro
     restart: unless-stopped
 
 
