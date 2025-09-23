@@ -46,14 +46,19 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
-# Bring in resources (including Wayfinder output from vendor stage)
+# Bring in sources generated in vendor stage
 COPY --from=vendor /app/resources /app/resources
+# ⬇️ Add this so imports like "../../../public/img/..." resolve
+COPY --from=vendor /app/public /app/public
+
+# Vite/TS configs
 COPY vite.config.ts tsconfig.json ./
 
-#  prevent the plugin from invoking PHP in this stage
+# (from earlier) prevent Wayfinder plugin from invoking PHP in this stage
 ENV WAYFINDER_COMMAND=true
 
 RUN npm run build
+
 
 # -------- 3) Final PHP-FPM runtime --------
 FROM php:8.4-fpm AS app
