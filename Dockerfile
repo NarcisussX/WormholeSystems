@@ -65,8 +65,8 @@ FROM php:8.4-fpm AS app
 WORKDIR /srv/app
 
 RUN apt-get update && apt-get install -y \
-    git unzip libzip-dev libpng-dev libonig-dev libicu-dev libxml2-dev \
-    && rm -rf /var/lib/apt/lists/*
+    git unzip libzip-dev libpng-dev libonig-dev libicu-dev libxml2-dev gosu \
+ && rm -rf /var/lib/apt/lists/*
 
 RUN docker-php-ext-install pcntl sockets pdo_mysql bcmath intl opcache zip \
  && pecl install redis \
@@ -87,10 +87,10 @@ RUN { \
   echo "opcache.enable_cli=1"; \
 } > /usr/local/etc/php/conf.d/99-custom.ini
 
-# Entrypoint (migrate, storage:link, caches)
+# Entrypoint (now runs as root; it drops to www-data for artisan/other commands)
 COPY docker/app/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-USER www-data
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["php-fpm", "-F"]
+

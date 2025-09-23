@@ -3,27 +3,34 @@ set -euo pipefail
 
 cd /srv/app
 
-# Ensure storage is writable (volume may come in with root perms)
+# Ensure required dirs exist and are writable
 mkdir -p storage/framework/{cache,sessions,views} storage/logs bootstrap/cache
-chmod -R 775 storage bootstrap/cache || true
 
-# Copy example env on first run if no .env present
-if [ ! -f .env ]; then
-  cp .env.example .env || true
+# Own by www-data so all services (app/worker/scheduler/reverb) can use them
+chown -R www-data:www-data storage bootstrap/cache
+chmod -R ug+rwX storage bootstrap/cache || true
+
+# Create .env on first run (safe if it already exists)
+[ -f .env ] || cp .env.example .env || true
+
+# Run artisan setup as www-data (DB will be ready thanks to compose healthcheck)
+if command -v gosu >/dev/null 2>&1; then
+  as_www="gosu www-data"
+else
+  as_www="su -s /bin/sh -c"
 fi
 
-# Ensure APP_KEY exists
-php artisan key:generate --force --no-interaction || true
+$as_www "php artisan key:generate --force --no-interaction" || true
+$as_www "php artisan storage:link" || true
+$as_www "php artisan config:cache" || true
+$as_www "php artisan route:cache" || true
+$as_www "php artisan view:cache" || true
+$as_www "php artisan migrate --force" || true
 
-# Cache config/routes/views for perf
-php artisan config:cache || true
-php artisan route:cache || true
-php artisan view:cache || true
-
-# Run database migrations (safe to run repeatedly)
-php artisan migrate --force || true
-
-# Ensure storage link
-php artisan storage:link || true
-
-exec "$@"
+# If we're starting php-fpm, keep its default behavior (master root, workers www-data).
+# For any other command (queue, schedule, reverb), drop to www-data.
+if [ "${1:-}" = "php-fpm" ]; then
+  exec "$@"
+else
+  exec gosu www-data "$@"
+fi

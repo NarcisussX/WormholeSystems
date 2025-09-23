@@ -1,77 +1,91 @@
-version: "3.9"
 services:
+  db:
+    image: mariadb:11
+    # (keep your env)
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -proot || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  # one-shot to populate the public volume from the built app image
+  public-sync:
+    image: wormholesystems/app:local
+    command: sh -lc 'rm -rf /out/* && cp -a /srv/app/public/. /out/'
+    depends_on:
+      app:
+        condition: service_started
+    volumes:
+      - app_public:/out
+    restart: "no"
+
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
     image: wormholesystems/app:local
     env_file: .env.docker
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
     volumes:
       - app_storage:/srv/app/storage
       - app_cache:/srv/app/bootstrap/cache
-    networks: [net]
+    restart: unless-stopped
+
+  reverb:
+    image: wormholesystems/app:local
+    env_file: .env.docker
+    command: php artisan reverb:start --port=8080 --host=0.0.0.0
+    depends_on:
+      app:
+        condition: service_started
+    volumes:
+      - app_storage:/srv/app/storage
+      - app_cache:/srv/app/bootstrap/cache
+    restart: unless-stopped
 
   worker:
     image: wormholesystems/app:local
     env_file: .env.docker
     command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
-    depends_on: [app, db, redis]
+    depends_on:
+      app:
+        condition: service_started
     volumes:
       - app_storage:/srv/app/storage
       - app_cache:/srv/app/bootstrap/cache
-    networks: [net]
+    restart: unless-stopped
 
   scheduler:
     image: wormholesystems/app:local
     env_file: .env.docker
     command: php artisan schedule:work
-    depends_on: [app, db, redis]
+    depends_on:
+      app:
+        condition: service_started
     volumes:
       - app_storage:/srv/app/storage
       - app_cache:/srv/app/bootstrap/cache
-    networks: [net]
-
-  # Laravel Reverb (WebSocket server)
-  reverb:
-    image: wormholesystems/app:local
-    env_file: .env.docker
-    command: php artisan reverb:start --port=8080 --host=0.0.0.0
-    depends_on: [app]
-    networks: [net]
+    restart: unless-stopped
 
   nginx:
     image: nginx:1.27-alpine
-    depends_on: [app, reverb]
+    depends_on:
+      app:
+        condition: service_started           # 👈 ensure app DNS exists before start
+      reverb:
+        condition: service_started
+      public-sync:
+        condition: service_completed_successfully
+    # no host ports here; Caddy will front this on :80/:443
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - app_public:/srv/app/public:ro
-      # if terminating TLS on this box:
-      # - "443:443"
-    networks: [net]
-
-  db:
-    image: mariadb:11
-    environment:
-      MYSQL_DATABASE: wormholesystems
-      MYSQL_USER: wormhole
-      MYSQL_PASSWORD: wormhole
-      MYSQL_ROOT_PASSWORD: root
-    volumes:
-      - db_data:/var/lib/mysql
-    networks: [net]
-
-  redis:
-    image: redis:7-alpine
-    networks: [net]
+    restart: unless-stopped
 
 volumes:
   db_data:
+  app_public:
   app_storage:
   app_cache:
-  app_public:
-
-networks:
-  net:
