@@ -1,0 +1,4 @@
+services:
+  nginx:
+    ports:
+      - "8081:80"   # host:container
