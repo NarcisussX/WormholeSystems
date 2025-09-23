@@ -60,10 +60,15 @@ for i in $(seq 1 30); do
   sleep 3
 done
 
-# 7) Run the requested process
+# 7) Launch the requested process
+# php-fpm should stay root; other commands can drop privs if gosu is present
 if [ "${1:-}" = "php-fpm" ]; then
   exec "$@"
 else
-  # require gosu (we install it in the image)
-  exec gosu www-data "$@"
+  if command -v gosu >/dev/null 2>&1; then
+    exec gosu www-data "$@"
+  else
+    echo "[entrypoint] gosu not found; running '$*' as root" >&2
+    exec "$@"
+  fi
 fi
