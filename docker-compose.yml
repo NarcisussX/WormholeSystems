@@ -75,12 +75,13 @@ services:
       MYSQL_ROOT_PASSWORD: root
     volumes:
       - db_data:/var/lib/mysql
-    networks: [net]
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -proot || exit 1"]
+      # use the UNIX socket as root (no password required inside the container)
+      test: ["CMD-SHELL", "mysqladmin ping -S /run/mysqld/mysqld.sock -uroot --silent || exit 1"]
       interval: 5s
-      timeout: 3s
-      retries: 30
+      timeout: 5s
+      retries: 40
+      start_period: 60s
     restart: unless-stopped
 
   public-sync:
