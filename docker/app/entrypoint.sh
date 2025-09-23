@@ -19,11 +19,15 @@ cd "$WEBROOT"
 
 # 2) Ensure Laravel dirs + perms
 mkdir -p storage/framework/{cache,sessions,views} storage/logs bootstrap/cache
-# public needs to be writable so we can create the "public/storage" symlink
-chmod u+w public || true
 
-chown -R www-data:www-data storage bootstrap/cache public
-chmod -R ug+rwX storage bootstrap/cache
+# public can be ro in worker/reverb — do not fail
+chmod u+w public 2>/dev/null || true
+
+# never fail on chown when bind/ro
+chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true
+chown -R www-data:www-data public 2>/dev/null || true
+chmod -R ug+rwX storage bootstrap/cache 2>/dev/null || true
+
 
 # 3) Ensure .env exists and is writable for key:generate
 [ -f .env ] || cp .env.example .env || true
