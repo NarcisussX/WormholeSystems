@@ -42,12 +42,17 @@ RUN php artisan wayfinder:generate --ansi
 # -------- 2) Node/Vite build stage --------
 FROM node:22-alpine AS node_builder
 WORKDIR /app
+
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
 # Bring in resources (including Wayfinder output from vendor stage)
 COPY --from=vendor /app/resources /app/resources
 COPY vite.config.ts tsconfig.json ./
+
+#  prevent the plugin from invoking PHP in this stage
+ENV WAYFINDER_COMMAND=true
+
 RUN npm run build
 
 # -------- 3) Final PHP-FPM runtime --------

@@ -22,7 +22,7 @@ export default defineConfig({
                 },
             },
         }),
-        wayfinder(),
+        wayfinder({command: process.env.WAYFINDER_COMMAND || "php artisan wayfinder:generate",}),
         VitePWA({
             registerType: 'autoUpdate',
             workbox: {
