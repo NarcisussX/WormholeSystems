@@ -70,17 +70,17 @@ ARG VITE_PUSHER_SCHEME
 ARG VITE_PUSHER_APP_CLUSTER
 
 RUN printf '%s\n' \
-  "VITE_REVERB_APP_KEY=${VITE_REVERB_APP_KEY}" \
-  "VITE_REVERB_HOST=${VITE_REVERB_HOST}" \
-  "VITE_REVERB_PORT=${VITE_REVERB_PORT}" \
-  "VITE_REVERB_SCHEME=${VITE_REVERB_SCHEME}" \
-  "VITE_REVERB_PATH=${VITE_REVERB_PATH}" \
-  "VITE_PUSHER_APP_KEY=${VITE_PUSHER_APP_KEY}" \
-  "VITE_PUSHER_HOST=${VITE_PUSHER_HOST}" \
-  "VITE_PUSHER_PORT=${VITE_PUSHER_PORT}" \
-  "VITE_PUSHER_SCHEME=${VITE_PUSHER_SCHEME}" \
-  "VITE_PUSHER_APP_CLUSTER=${VITE_PUSHER_APP_CLUSTER}" \
-  > .env
+    "VITE_REVERB_APP_KEY=${VITE_REVERB_APP_KEY}" \
+    "VITE_REVERB_HOST=${VITE_REVERB_HOST}" \
+    "VITE_REVERB_PORT=${VITE_REVERB_PORT}" \
+    "VITE_REVERB_SCHEME=${VITE_REVERB_SCHEME}" \
+    "VITE_REVERB_PATH=${VITE_REVERB_PATH}" \
+    "VITE_PUSHER_APP_KEY=${VITE_PUSHER_APP_KEY}" \
+    "VITE_PUSHER_HOST=${VITE_PUSHER_HOST}" \
+    "VITE_PUSHER_PORT=${VITE_PUSHER_PORT}" \
+    "VITE_PUSHER_SCHEME=${VITE_PUSHER_SCHEME}" \
+    "VITE_PUSHER_APP_CLUSTER=${VITE_PUSHER_APP_CLUSTER}" \
+    > .env
 # <<<
 
 RUN npm run build
@@ -93,26 +93,35 @@ WORKDIR /srv/app
 
 RUN apt-get update && apt-get install -y \
     git unzip rsync libzip-dev libpng-dev libonig-dev libicu-dev libxml2-dev gosu \
- && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*
 
 RUN docker-php-ext-install pcntl sockets pdo_mysql bcmath intl opcache zip \
- && pecl install redis \
- && docker-php-ext-enable redis
+    && pecl install redis \
+    && docker-php-ext-enable redis
 
 # App source, vendor, built assets
 COPY . /srv/app
 COPY --from=vendor /app/vendor /srv/app/vendor
 COPY --from=node_builder /app/public/build /srv/app/public/build
 
+# ✅ ensure the built assets land in the runtime image
+COPY --from=node_builder /app/public/build                /var/www/html/public/build
+# if your PWA writes into build/ these may be optional, include if present
+COPY --from=node_builder /app/public/manifest.json        /var/www/html/public/manifest.json
+COPY --from=node_builder /app/public/manifest.webmanifest /var/www/html/public/manifest.webmanifest
+COPY --from=node_builder /app/public/registerSW.js        /var/www/html/public/registerSW.js || true
+COPY --from=node_builder /app/public/sw.js                /var/www/html/public/sw.js || true
+COPY --from=node_builder /app/public/workbox-*.js         /var/www/html/public/ || true
+
 # PHP config
 RUN { \
-  echo "memory_limit=512M"; \
-  echo "upload_max_filesize=20M"; \
-  echo "post_max_size=21M"; \
-  echo "max_execution_time=120"; \
-  echo "opcache.enable=1"; \
-  echo "opcache.enable_cli=1"; \
-} > /usr/local/etc/php/conf.d/99-custom.ini
+    echo "memory_limit=512M"; \
+    echo "upload_max_filesize=20M"; \
+    echo "post_max_size=21M"; \
+    echo "max_execution_time=120"; \
+    echo "opcache.enable=1"; \
+    echo "opcache.enable_cli=1"; \
+    } > /usr/local/etc/php/conf.d/99-custom.ini
 
 # Entrypoint
 COPY docker/app/entrypoint.sh /entrypoint.sh
