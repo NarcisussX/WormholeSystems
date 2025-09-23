@@ -95,24 +95,21 @@ services:
       retries: 40
       start_period: 30s
     restart: unless-stopped
-    
-  public-sync:
-    image: wormholesystems/app:local
-    depends_on:
-      app:
-        condition: service_started
-    command: >
-      bash -lc '
-        set -e
-        shopt -s dotglob
-        mkdir -p /public
-        # copy public/ (including index.php and build/) into the shared volume
-        rsync -a --delete /var/www/html/public/ /public/
-        ls -la /public | head -n 20
-      '
-    volumes:
-      - app_public:/public
-    restart: "no"
+
+public-sync:
+  image: wormholesystems/app:local
+  # Mount the same volume Nginx reads from
+  volumes:
+    - app_public:/srv/app/public
+  # ⛔ do NOT use the app’s entrypoint
+  entrypoint: ["/bin/sh","-lc"]
+  command: >
+    set -e
+    echo "[public-sync] seeding /srv/app/public from image...";
+    # copy the runtime image’s webroot into the volume
+    mkdir -p /srv/app/public &&
+    rsync -a --delete /var/www/html/public/ /srv/app/public/
+
 
 
   redis:
