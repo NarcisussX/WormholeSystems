@@ -29,7 +29,6 @@ yarn-error.log
 /storage/app/
 /storage/framework/
 
-**/caddy
 frankenphp
 frankenphp-worker.php
 

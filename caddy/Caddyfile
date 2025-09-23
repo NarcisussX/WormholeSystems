@@ -1,0 +1,15 @@
+triffnix.com, www.triffnix.com {
+	encode zstd gzip
+
+	@ws path /reverb*
+	reverse_proxy @ws nginx:80 {
+		header_up Host {host}
+		header_up X-Forwarded-Proto {scheme}
+		transport http { versions h2c 1.1 }
+	}
+
+	reverse_proxy nginx:80 {
+		header_up Host {host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}
