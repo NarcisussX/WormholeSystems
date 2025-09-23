@@ -64,5 +64,6 @@ done
 if [ "${1:-}" = "php-fpm" ]; then
   exec "$@"
 else
-  exec as_www "$@"
+  # require gosu (we install it in the image)
+  exec gosu www-data "$@"
 fi
