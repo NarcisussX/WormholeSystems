@@ -15,7 +15,6 @@ services:
       - app_storage:/srv/app/storage
       - app_cache:/srv/app/bootstrap/cache
     restart: unless-stopped
-    networks: [net]
 
   worker:
     image: wormholesystems/app:local
@@ -28,6 +27,7 @@ services:
       - app_storage:/srv/app/storage
       - app_cache:/srv/app/bootstrap/cache
     restart: unless-stopped
+
   scheduler:
     image: wormholesystems/app:local
     env_file: .env.docker
@@ -85,7 +85,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    networks: [net]
 
 volumes:
   db_data:
@@ -93,6 +92,3 @@ volumes:
   app_storage:
   app_cache:
   app_public:
-
-networks:
-  net:
