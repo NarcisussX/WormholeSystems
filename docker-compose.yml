@@ -85,12 +85,18 @@ services:
 
   public-sync:
     image: wormholesystems/app:local
-    command: sh -lc 'rm -rf /out/* && cp -a /srv/app/public/. /out/'
+    entrypoint: ["/bin/sh", "-lc"]    
+    command: >
+      set -e;
+      mkdir -p /out;
+      rm -rf /out/*;
+      cp -a /srv/app/public/. /out/;
+      echo "public-sync: copied /srv/app/public -> /out"
+    volumes:
+      - app_public:/out
     depends_on:
       app:
         condition: service_started
-    volumes:
-      - app_public:/out
     restart: "no"
 
   redis:
