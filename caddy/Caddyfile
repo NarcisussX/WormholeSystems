@@ -1,10 +1,19 @@
-triffnix.com, www.triffnix.com {
-	# If Cloudflare proxy is ON (orange cloud), using Caddy's internal cert avoids ACME behind CF
-	tls internal
+# /root/WormholeSystems/Caddyfile
+{
+  # Optional: enable to see request logs while debugging
+  # debug
+}
 
-	encode zstd gzip
-	reverse_proxy nginx:80 {
-		header_up Host {host}
-		header_up X-Forwarded-Proto {scheme}
-	}
+triffnix.com, www.triffnix.com {
+  encode zstd gzip
+  reverse_proxy http://nginx:80 {
+    header_up Host {host}
+    header_up X-Forwarded-Proto {scheme}
+    header_up X-Forwarded-For {remote}
+  }
+}
+
+# Plain HTTP (won't usually be hit with CF orange-cloud on)
+:80 {
+  reverse_proxy http://nginx:80
 }
