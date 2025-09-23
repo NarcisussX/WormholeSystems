@@ -1,4 +1,4 @@
-import './echo'
+import Pusher from 'pusher-js'
 import { createInertiaApp, router } from '@inertiajs/vue3';
 import { configureEcho } from '@laravel/echo-vue';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
@@ -7,13 +7,26 @@ import { createApp, h } from 'vue';
 import '../css/app.css';
 import { initializeTheme } from './composables/useAppearance';
 
-configureEcho({
-    broadcaster: 'reverb',
-});
+;(window as any).Pusher = Pusher
 
-router.on('finish', () => {
-    router.flushAll();
-});
+const env = import.meta.env as any
+const scheme = (env.VITE_REVERB_SCHEME ?? env.VITE_PUSHER_SCHEME ?? (location.protocol === 'https:' ? 'https' : 'http')) as string
+const port = Number(env.VITE_REVERB_PORT ?? env.VITE_PUSHER_PORT ?? (scheme === 'https' ? 443 : 80))
+const host = (env.VITE_REVERB_HOST ?? env.VITE_PUSHER_HOST ?? window.location.hostname) as string
+const key  = (env.VITE_REVERB_APP_KEY ?? env.VITE_PUSHER_APP_KEY) as string
+const basePath = String(env.VITE_REVERB_PATH ?? '/reverb').replace(/\/+$/, '')
+
+configureEcho({
+  broadcaster: 'reverb',
+  key,
+  wsHost: host,
+  wsPort: port,
+  wssPort: port,
+  forceTLS: scheme === 'https',
+  enabledTransports: ['ws', 'wss'],
+  // Reverb websocket endpoint is <basePath>/app
+  wsPath: `${basePath}/app`,
+})
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
