@@ -57,7 +57,7 @@ COPY vite.config.ts tsconfig.json ./
 # prevent Wayfinder plugin from invoking PHP in this stage
 ENV WAYFINDER_COMMAND=true
 
-# --- VITE env that the browser bundle needs (Echo/Pusher/Reverb) ---
+# >>> add build-time env for the browser bundle
 ARG VITE_REVERB_APP_KEY
 ARG VITE_REVERB_HOST
 ARG VITE_REVERB_PORT
@@ -69,7 +69,6 @@ ARG VITE_PUSHER_PORT
 ARG VITE_PUSHER_SCHEME
 ARG VITE_PUSHER_APP_CLUSTER
 
-# Write a .env file that Vite reads at build time
 RUN printf '%s\n' \
   "VITE_REVERB_APP_KEY=${VITE_REVERB_APP_KEY}" \
   "VITE_REVERB_HOST=${VITE_REVERB_HOST}" \
@@ -82,6 +81,7 @@ RUN printf '%s\n' \
   "VITE_PUSHER_SCHEME=${VITE_PUSHER_SCHEME}" \
   "VITE_PUSHER_APP_CLUSTER=${VITE_PUSHER_APP_CLUSTER}" \
   > .env
+# <<<
 
 RUN npm run build
 

@@ -4,12 +4,13 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
+        # Browser-facing values (public host + TLS)
         VITE_REVERB_APP_KEY: ${REVERB_APP_KEY:-laravel}
         VITE_REVERB_HOST: www.triffnix.com
         VITE_REVERB_PORT: "443"
         VITE_REVERB_SCHEME: https
         VITE_REVERB_PATH: /reverb
-
+        # Also provide PUSHER_* in case the code falls back to those names
         VITE_PUSHER_APP_KEY: ${REVERB_APP_KEY:-laravel}
         VITE_PUSHER_HOST: www.triffnix.com
         VITE_PUSHER_PORT: "443"
