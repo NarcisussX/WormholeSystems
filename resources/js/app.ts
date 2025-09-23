@@ -11,9 +11,9 @@ import { initializeTheme } from './composables/useAppearance';
 
 const env = import.meta.env as any
 const scheme = (env.VITE_REVERB_SCHEME ?? env.VITE_PUSHER_SCHEME ?? (location.protocol === 'https:' ? 'https' : 'http')) as string
-const port = Number(env.VITE_REVERB_PORT ?? env.VITE_PUSHER_PORT ?? (scheme === 'https' ? 443 : 80))
-const host = (env.VITE_REVERB_HOST ?? env.VITE_PUSHER_HOST ?? window.location.hostname) as string
-const key  = (env.VITE_REVERB_APP_KEY ?? env.VITE_PUSHER_APP_KEY) as string
+const port   = Number(env.VITE_REVERB_PORT ?? env.VITE_PUSHER_PORT ?? (scheme === 'https' ? 443 : 80))
+const host   = (env.VITE_REVERB_HOST ?? env.VITE_PUSHER_HOST ?? window.location.hostname) as string
+const key    = (env.VITE_REVERB_APP_KEY ?? env.VITE_PUSHER_APP_KEY) as string
 const basePath = String(env.VITE_REVERB_PATH ?? '/reverb').replace(/\/+$/, '')
 
 configureEcho({
@@ -24,7 +24,7 @@ configureEcho({
   wssPort: port,
   forceTLS: scheme === 'https',
   enabledTransports: ['ws', 'wss'],
-  // Reverb websocket endpoint is <basePath>/app
+  // Reverb is proxied at /reverb, the websocket endpoint is /reverb/app
   wsPath: `${basePath}/app`,
 })
 
