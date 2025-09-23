@@ -76,12 +76,11 @@ services:
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:
-      # use the UNIX socket as root (no password required inside the container)
-      test: ["CMD-SHELL", "mysqladmin ping -S /run/mysqld/mysqld.sock -uroot --silent || exit 1"]
+      test: ["CMD-SHELL", "[ -S /run/mysqld/mysqld.sock ] || mysqladmin ping -h 127.0.0.1 --silent || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 40
-      start_period: 60s
+      start_period: 30s
     restart: unless-stopped
 
   public-sync:
