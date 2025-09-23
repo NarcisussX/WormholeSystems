@@ -7,25 +7,18 @@ RUN apt-get update && apt-get install -y \
     git unzip libzip-dev libicu-dev libpng-dev libonig-dev libxml2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# PHP extensions (pcntl is required by the app; others are common Laravel reqs)
+# PHP extensions (pcntl was the one that previously failed)
 RUN docker-php-ext-install pcntl sockets intl zip bcmath pdo_mysql
-
-# Optional but common for Laravel
 RUN pecl install redis && docker-php-ext-enable redis
 
 # Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
-# Copy only composer files first for better caching, then install deps
-COPY composer.json composer.lock ./
-RUN composer install --no-dev --prefer-dist --no-progress --no-interaction
-
-# Copy the rest of the source so we can run artisan generators
+# Copy the whole app BEFORE composer install so artisan exists
 COPY . /app
 
-# Minimal env so artisan can bootstrap without touching a real DB
-# (Wayfinder only scans routes/controllers)
+# Minimal env so artisan/package:discover can run during Composer scripts
 ENV APP_ENV=production \
     APP_KEY=base64:WfH0leTempKeyDontUseInProd++++++++++++++= \
     DB_CONNECTION=sqlite \
@@ -33,45 +26,38 @@ ENV APP_ENV=production \
     CACHE_STORE=file \
     QUEUE_CONNECTION=sync
 
-# Create placeholder .env if missing, then generate Wayfinder TS before Vite build
-RUN php -r "file_exists('.env') || copy('.env.example', '.env');" \
- && php artisan key:generate --ansi || true \
- && php artisan wayfinder:generate --ansi
+# Ensure a .env exists (some packages read it) then install deps
+RUN php -r "file_exists('.env') || copy('.env.example', '.env');" || true
+RUN composer install --no-dev --prefer-dist --no-progress --no-interaction
+
+# Generate Wayfinder TS modules (needed for Vite build)
+RUN php artisan wayfinder:generate --ansi
 
 # -------- 2) Node/Vite build stage --------
 FROM node:22-alpine AS node_builder
 WORKDIR /app
-
-# Copy package manifests and install
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
-# Bring in resources (including the Wayfinder-generated TS from vendor stage)
+# Bring in resources (including Wayfinder output)
 COPY --from=vendor /app/resources /app/resources
-# Vite/TS configs
 COPY vite.config.ts tsconfig.json ./
-
-# Build frontend assets
 RUN npm run build
 
-# -------- 3) Final PHP-FPM runtime image --------
+# -------- 3) Final PHP-FPM runtime --------
 FROM php:8.4-fpm AS app
 WORKDIR /srv/app
 
-# System deps
 RUN apt-get update && apt-get install -y \
     git unzip libzip-dev libpng-dev libonig-dev libicu-dev libxml2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# PHP runtime extensions (match vendor stage)
 RUN docker-php-ext-install pcntl sockets pdo_mysql bcmath intl opcache zip \
  && pecl install redis \
  && docker-php-ext-enable redis
 
-# Copy full source
+# App source, vendor, built assets
 COPY . /srv/app
-
-# Copy vendor and built assets from previous stages
 COPY --from=vendor /app/vendor /srv/app/vendor
 COPY --from=node_builder /app/public/build /srv/app/public/build
 
@@ -85,7 +71,7 @@ RUN { \
   echo "opcache.enable_cli=1"; \
 } > /usr/local/etc/php/conf.d/99-custom.ini
 
-# Entrypoint (migrate, storage:link, cache warmups)
+# Entrypoint (migrate, storage:link, caches)
 COPY docker/app/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
