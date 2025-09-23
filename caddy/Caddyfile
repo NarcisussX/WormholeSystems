@@ -1,13 +1,8 @@
 triffnix.com, www.triffnix.com {
+	# If Cloudflare proxy is ON (orange cloud), using Caddy's internal cert avoids ACME behind CF
+	tls internal
+
 	encode zstd gzip
-
-	@ws path /reverb*
-	reverse_proxy @ws nginx:80 {
-		header_up Host {host}
-		header_up X-Forwarded-Proto {scheme}
-		transport http { versions h2c 1.1 }
-	}
-
 	reverse_proxy nginx:80 {
 		header_up Host {host}
 		header_up X-Forwarded-Proto {scheme}
