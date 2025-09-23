@@ -15,22 +15,28 @@ RUN pecl install redis && docker-php-ext-enable redis
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
-# Copy the whole app BEFORE composer install so artisan exists
+# ✅ Copy the whole app BEFORE running composer (artisan must exist)
 COPY . /app
 
-# Minimal env so artisan/package:discover can run during Composer scripts
+# ✅ Make sure Laravel cache paths exist for composer scripts & artisan
+RUN mkdir -p storage/framework/{cache,sessions,views} bootstrap/cache
+
+# Minimal env so composer scripts & artisan can boot safely during build
 ENV APP_ENV=production \
     APP_KEY=base64:WfH0leTempKeyDontUseInProd++++++++++++++= \
     DB_CONNECTION=sqlite \
     DB_DATABASE=/tmp/_build.sqlite \
     CACHE_STORE=file \
-    QUEUE_CONNECTION=sync
+    QUEUE_CONNECTION=sync \
+    VIEW_COMPILED_PATH=/app/storage/framework/views
 
-# Ensure a .env exists (some packages read it) then install deps
+# Ensure a .env exists (some packages look for it)
 RUN php -r "file_exists('.env') || copy('.env.example', '.env');" || true
+
+# Install PHP deps (runs package:discover etc. now that paths exist)
 RUN composer install --no-dev --prefer-dist --no-progress --no-interaction
 
-# Generate Wayfinder TS modules (needed for Vite build)
+# Generate Wayfinder TS modules (needed before Vite build)
 RUN php artisan wayfinder:generate --ansi
 
 # -------- 2) Node/Vite build stage --------
@@ -39,7 +45,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
-# Bring in resources (including Wayfinder output)
+# Bring in resources (including Wayfinder output from vendor stage)
 COPY --from=vendor /app/resources /app/resources
 COPY vite.config.ts tsconfig.json ./
 RUN npm run build
