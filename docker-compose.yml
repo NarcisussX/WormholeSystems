@@ -48,8 +48,6 @@ services:
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - app_public:/srv/app/public:ro
-    ports:
-      - "80:80"
       # if terminating TLS on this box:
       # - "443:443"
     networks: [net]
